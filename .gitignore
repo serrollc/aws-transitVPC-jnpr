@@ -1,3 +1,4 @@
 *.log
 vpclist
 vpclist.bak
+juniper_aws_transit_vpc_testing
