@@ -1,0 +1,79 @@
+cli
+configure
+set security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} authentication-method pre-shared-keys
+set security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} authentication-algorithm sha1
+set security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} encryption-algorithm aes-128-cbc
+set security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} lifetime-seconds 28800
+set security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} dh-group group2
+set security ike policy ike-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} mode main
+set security ike policy ike-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} proposals ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+set security ike policy ike-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} pre-shared-key ascii-text {{ ike_pre_shared_key }}
+
+set security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} ike-policy ike-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+			 
+set security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} external-interface ge-0/0/0.0
+set security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} address {{ vpn_gateway_tunnel_outside_address }}
+set security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} no-nat-traversal
+
+set security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} dead-peer-detection interval 10 threshold 3
+
+set security ipsec proposal ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} protocol esp
+set security ipsec proposal ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} authentication-algorithm hmac-sha1-96
+set security ipsec proposal ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} encryption-algorithm aes-128-cbc
+set security ipsec proposal ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} lifetime-seconds 3600
+
+set security ipsec policy ipsec-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} perfect-forward-secrecy keys group2
+set security ipsec policy ipsec-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }} proposals ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+
+set security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }} ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+set security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }} ike ipsec-policy ipsec-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+set security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }} df-bit clear
+set security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }} establish-tunnels immediately
+
+set interfaces st0.{{ tunnelId }} family inet address {{ customer_gateway_tunnel_inside_address_ip_address }}/{{ vpn_gateway_tunnel_inside_address_network_cidr }}
+set interfaces st0.{{ tunnelId }} family inet mtu 1436
+
+set security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }} bind-interface st0.{{ tunnelId }}
+
+set security flow tcp-mss ipsec-vpn mss 1379
+
+set policy-options policy-statement EXPORT-DEFAULT term default from route-filter 0.0.0.0/0 exact
+set policy-options policy-statement EXPORT-DEFAULT term default then accept
+set policy-options policy-statement EXPORT-DEFAULT term reject then reject
+
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp group ebgp neighbor {{ vpn_gateway_tunnel_inside_address_ip_address }} export EXPORT-DEFAULT
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp group ebgp neighbor {{ vpn_gateway_tunnel_inside_address_ip_address }} peer-as {{ vpn_gateway_bgp_asn }}
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp group ebgp neighbor {{ vpn_gateway_tunnel_inside_address_ip_address }} hold-time 30
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp group ebgp neighbor {{ vpn_gateway_tunnel_inside_address_ip_address }} local-as {{ customer_gateway_bgp_asn }}
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp group ebgp type external
+
+set policy-options policy-statement policy-{{ vpn_connection_id }} term stx from instance vpc-{{ vpn_connection_id }}
+set policy-options policy-statement policy-{{ vpn_connection_id }} term stx from protocol static
+set policy-options policy-statement policy-{{ vpn_connection_id }} term stx then accept
+set policy-options policy-statement policy-{{ vpn_connection_id }} term bgp-routes from instance vpc-{{ vpn_connection_id }}
+set policy-options policy-statement policy-{{ vpn_connection_id }} term bgp-routes from protocol bgp
+set policy-options policy-statement policy-{{ vpn_connection_id }} term bgp-routes then accept
+set policy-options policy-statement policy-{{ vpn_connection_id }} term default-drop from instance vpc-{{ vpn_connection_id }}
+set policy-options policy-statement policy-{{ vpn_connection_id }} term default-drop then reject
+
+set security zones security-zone vpc-{{ vpn_connection_id }} host-inbound-traffic system-services ike
+set security zones security-zone vpc-{{ vpn_connection_id }} host-inbound-traffic protocol bgp
+set security zones security-zone vpc-{{ vpn_connection_id }} interfaces st0.{{ tunnelId }}
+
+set routing-instances vpc-{{ vpn_connection_id }} instance-type virtual-router
+set routing-instances vpc-{{ vpn_connection_id }} interface st0.{{ tunnelId }}
+set routing-instances vpc-{{ vpn_connection_id }} routing-options static route 0.0.0.0/0 next-table transit.inet.0
+set routing-instances vpc-{{ vpn_connection_id }} routing-options autonomous-system {{ customer_gateway_bgp_asn }}
+set routing-instances vpc-{{ vpn_connection_id }} protocols bgp multihop
+
+set routing-instances transit routing-options instance-import policy-{{ vpn_connection_id }}
+			
+			 #Adding Global Policies
+set security policies global policy intervpc match from-zone vpc-{{ vpn_connection_id }}
+set security policies global policy intervpc match to-zone vpc-{{ vpn_connection_id }}
+
+set security policies global policy intervpn match from-zone vpc-{{ vpn_connection_id }}
+set security policies global policy intervpn match to-zone vpc-{{ vpn_connection_id }}
+
+set security policies global policy vpc-2-dc match from-zone vpc-{{ vpn_connection_id }}
+set security policies global policy dc-2-vpc match to-zone vpc-{{ vpn_connection_id }}

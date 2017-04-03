@@ -1,0 +1,12 @@
+
+delete security ike proposal ike-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete security ike policy ike-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete security ike gateway gw-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete security zones security-zone vpc-{{ vpn_connection_id }}
+delete interfaces st0 unit {{ tunnelId }}
+delete security ipsec proposal ipsec-prop-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete security ipsec policy ipsec-pol-{{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete security ipsec vpn {{ vpn_connection_id }}-{{ ipsec_tunnel_var }}
+delete routing-instances vpc-{{ vpn_connection_id }}
+delete routing-instances transit routing-options instance-import policy-{{ vpn_connection_id }}
+delete policy-options policy-statement policy-{{ vpn_connection_id }}
