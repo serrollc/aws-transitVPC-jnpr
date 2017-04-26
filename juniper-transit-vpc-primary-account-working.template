@@ -15,21 +15,6 @@
       "Default" : "Yes",
       "AllowedValues" : ["Yes", "No"]
     },
-	"AmiImageId" : {
-      "Description" : "Provide AMI Image Id",
-      "Type" : "AWS::EC2::Image::Id",
-      "Default" : "ami-a7a94ab1"
-    },
-	"RoleExisting" : {
-      "Description" : "Provide Role",
-      "Type" : "String",
-      "Default" : "arn:aws:iam::544351658984:role/RoleNEWTEST"
-    },
-	"TemplateBucketName" : {
-      "Description" : "Provide TemplateBucketName",
-      "Type" : "String",
-      "Default" : "vsrx-templates"
-    },
     "PreferredPathTag" : {
       "Description" : "Tag to use to configure a preferred VSRX VPN endpoint to control traffic flow through the Transit VPC VSRX (e.g. when integrating with CPE).",
       "Type" : "String",
@@ -100,11 +85,29 @@
     "SendAnonymousData": {
         "Description": "Choose to send anonymous data to AWS.",
         "Type": "String",
-        "Default": "Yes",
+        "Default": "No",
         "AllowedValues": [
             "Yes",
             "No"
         ]
+    },
+    "LambdaRegion": {
+      "Description": "Choose a region to where Lambda code runs.",
+      "Type": "String",
+      "Default": "us-east-1",
+      "AllowedValues": [ 
+        "us-east-1",
+        "us-east-2",
+        "us-west-2",
+        "us-west-1",
+        "eu-west-1",
+        "eu-central-1",
+        "ap-south-1",
+        "ap-southeast-1",
+        "ap-southeast-2",
+        "ap-northeast-1",
+        "ap-northeast-2"
+      ]  
     }
   },
   "Conditions" : {
@@ -126,7 +129,7 @@
       },
       {
         "Label" : { "default":"AWS Service Configuration" },
-        "Parameters" : [ "S3Prefix", "AccountId", "RoleExisting", "TemplateBucketName", "AmiImageId" ]
+        "Parameters" : [ "S3Prefix", "AccountId", "LambdaRegion" ]
       },
       {
         "Label" : { "default" : "Network Configuration" },
@@ -153,9 +156,7 @@
       "LicenseModel" : { "default" : "License Model" },
       "TerminationProtection" : { "default" : "Enable Termination Protection" },
       "AccountId" : { "default" : "Additional AWS Account ID (Optional)" },
-	  "RoleExisting" : { "default" : "Enter Existing Role ARN" },
-	  "TemplateBucketName" :  { "default" : "Enter TemplateBucketName" },
-	  "AmiImageId" : { "default" : "Enter AMI ID" }
+      "LambdaRegion" : {"default": "Lambda region"}
      }
     }
   },
@@ -163,8 +164,7 @@
     "Function" : {
       "Configurator" : { 
     "CodeLocation" : "juniper-transit-vpc-2/transit-vpc-push-juniper-config.zip",
-    "CodeRegion" : "us-east-1",
-    "Name" : "juniper-configurator",
+      "Name" : "juniper-configurator",
         "Description": "Transit VPC: This function is invoked when a generic VPN configuration is placed in an S3 bucket - it converts the generic information into Junos OS specific commands and pushes the config to transit VPC routers.",
         "Runtime": "python2.7",
         "Timeout": "300",
@@ -172,7 +172,6 @@
       },
       "Poller" : { 
     "CodeLocation" : "juniper-transit-vpc-2/transit-vpc-poller.py",
-    "CodeRegion" : "us-east-1",
     "Name" : "vgw-poller",
         "Description": "Transit VPC: Poller function responsible for identifying specifically tagged VGWs and creating VPN connections to transit VPC.",
         "Runtime": "python2.7",
@@ -193,7 +192,7 @@
     },
     "JunipervSRXAMI" : {
       "us-east-1"      : { "BYOL" : "ami-080f4168", "LicenseIncluded" : "ami-a7a94ab1" },
-      "us-east-2"      : { "BYOL" : "ami-a6d78cc3 ", "LicenseIncluded" : "ami-6e6f4a0b" },
+      "us-east-2"      : { "BYOL" : "ami-a6d78cc3", "LicenseIncluded" : "ami-6e6f4a0b" },
       "us-west-2"      : { "BYOL" : "ami-c5d60aa5", "LicenseIncluded" : "ami-bf3183df" },
       "us-west-1"      : { "BYOL" : "ami-080f4168", "LicenseIncluded" : "ami-d65506b6" },
       "eu-west-1"      : { "BYOL" : "ami-9f1a60ec", "LicenseIncluded" : "ami-222a0151" },
@@ -265,9 +264,9 @@
             "Effect": "Allow",
             "Principal": { "AWS": [
         { "Fn::Join" : ["", ["arn:aws:iam::",{"Fn::If": ["AuthorizeAnotherAccount", {"Ref" : "AccountId" }, { "Ref" : "AWS::AccountId" } ]}, ":root" ]]},
-        { "Ref" : "RoleExisting" },
-        { "Ref" : "RoleExisting" },
-        { "Ref" : "RoleExisting" }
+        { "Fn::GetAtt" : ["SolutionHelperRole", "Arn"] },
+        { "Fn::GetAtt" : ["JuniperConfigFunctionRole", "Arn"] },
+        { "Fn::GetAtt" : ["TransitVpcPollerRole", "Arn"] }
         ] },
             "Action": [
               "kms:Encrypt",
@@ -513,7 +512,7 @@
         "InstanceType" : { "Fn::FindInMap" : [ "vSRXInstance", { "Ref" : "VSRXType" }, "Type"] },
         "KeyName" : { "Ref" : "KeyName" },
         "DisableApiTermination" : {"Fn::If": ["EnableTerm", true, false ]},
-        "ImageId"        : { "Ref" : "AmiImageId" },
+        "ImageId"        : { "Fn::FindInMap" : [ "JunipervSRXAMI", { "Ref" : "AWS::Region" }, { "Ref" : "LicenseModel" } ] },
         "NetworkInterfaces" : [ { "NetworkInterfaceId" : {"Ref" : "vSRXInterface11"}, "DeviceIndex" : "0" },
                 { "NetworkInterfaceId" : {"Ref" : "vSRXInterface12"}, "DeviceIndex" : "1" }],
         "Tags" : [
@@ -531,7 +530,7 @@
         "InstanceType" : { "Fn::FindInMap" : [ "vSRXInstance", { "Ref" : "VSRXType" }, "Type"] },
         "KeyName" : { "Ref" : "KeyName" },
         "DisableApiTermination" : {"Fn::If": ["EnableTerm", true, false ]},
-        "ImageId"        : { "Ref" : "AmiImageId" },
+        "ImageId"        : { "Fn::FindInMap" : [ "JunipervSRXAMI", { "Ref" : "AWS::Region" }, { "Ref" : "LicenseModel" } ] },
         "NetworkInterfaces" : [ { "NetworkInterfaceId" : {"Ref" : "vSRXInterface21"}, "DeviceIndex" : "0" },
                 { "NetworkInterfaceId" : {"Ref" : "vSRXInterface22"}, "DeviceIndex" : "1" }],
         "Tags" : [
@@ -634,7 +633,7 @@
       "DependsOn" : "SolutionHelperRolePolicy",
       "Properties": {
         "Handler": "solution-helper.lambda_handler",
-        "Role": { "Ref" : "RoleExisting" },
+        "Role": { "Fn::GetAtt" : [ "SolutionHelperRole" , "Arn" ] },
         "Description": "Transit VPC: CloudFormation custom resource function invoked during transit VPC CloudFormation create, update, and delete stack operations.",
         "Code": {
           "S3Bucket": { "Fn::Join": ["", ["solutions-", {"Ref" : "AWS::Region"}]] },
@@ -739,9 +738,9 @@
        "ServiceToken": { "Fn::GetAtt" : ["SolutionHelper", "Arn"] },
        "Region": { "Ref": "AWS::Region" },
        "LambdaCode": { "Fn::FindInMap" : [ "Function", "Configurator", "CodeLocation"]},
-       "LambdaCodeRegion": { "Fn::FindInMap" : [ "Function", "Configurator", "CodeRegion"]},
+       "LambdaCodeRegion": { "Ref": "LambdaRegion" },
        "FunctionName": { "Fn::Join": ["", [ { "Ref" : "AWS::StackName" }, "-", { "Fn::FindInMap" : [ "Function", "Configurator", "Name"]}   ]] },
-       "Role": { "Ref" : "RoleExisting" },
+       "Role": { "Fn::GetAtt" : [ "JuniperConfigFunctionRole", "Arn" ] },
        "Runtime": { "Fn::FindInMap" : [ "Function", "Configurator", "Runtime"]},
        "Description": { "Fn::FindInMap" : [ "Function", "Configurator", "Description"]},
        "Timeout": { "Fn::FindInMap" : [ "Function", "Configurator", "Timeout"]},
@@ -787,7 +786,6 @@
             "'PREFERRED_PATH_TAG':'",{ "Ref" : "PreferredPathTag" },"',",
             "'HUB_TAG':'",{ "Ref" : "SpokeTag" },"',",
             "'HUB_TAG_VALUE':'",{ "Ref" : "SpokeTagValue" },"',",
-			"'TEMPLATE_BUCKET_NAME':'",{ "Ref" : "TemplateBucketName" },"',",
             "'USER_NAME':'",{ "Fn::FindInMap" : [ "Function", "vSRX", "UserName"]},"',",
             "'PRIVATE_KEY':'",{ "Fn::FindInMap" : [ "Function", "vSRX", "PrivateKey"]},"',",
             "'PUBLIC_KEY':'",{ "Fn::GetAtt" : [ "CreateRsaKey", "PubKey" ] },"',",
@@ -874,14 +872,14 @@
        "ServiceToken": { "Fn::GetAtt" : ["SolutionHelper", "Arn"] },
        "Region": { "Ref": "AWS::Region" },
        "LambdaCode": { "Fn::FindInMap" : [ "Function", "Poller", "CodeLocation"]},
-       "LambdaCodeRegion": { "Fn::FindInMap" : [ "Function", "Poller", "CodeRegion"]},
+       "LambdaCodeRegion": { "Ref": "LambdaRegion" },
        "Deliminator": { "Fn::FindInMap" : [ "Function", "FindReplace", "Deliminator"]},
        "FunctionName": { "Fn::Join": ["", [ { "Ref" : "AWS::StackName" }, "-", { "Fn::FindInMap" : [ "Function", "Poller", "Name"]} ]] },
-       "Role": { "Ref" : "RoleExisting" },
+       "Role": { "Fn::GetAtt" : [ "TransitVpcPollerRole", "Arn" ] },
        "CloudWatchEvent" : { "Fn::Join": ["", [
-        "{ 'RuleName' : '",{ "Ref" : "AWS::StackName" },"-VGW-Poller-1min', ",
-        "'ScheduleExpression' : 'cron(* * * * ? *)',",
-        "'Description': 'Transit VPC: Rule to trigger VGW-Poller every minute to find VGWs that need to be attached to the transit VPC.' }"
+        "{ 'RuleName' : '",{ "Ref" : "AWS::StackName" },"-VGW-Poller-15min', ",
+        "'ScheduleExpression' : 'cron(*/15 * * * ? *)',",
+        "'Description': 'Transit VPC: Rule to trigger VGW-Poller every 15 minutes to find VGWs that need to be attached to the transit VPC.' }"
     ]] },
        "Runtime": { "Fn::FindInMap" : [ "Function", "Poller", "Runtime"]},
        "Description": { "Fn::FindInMap" : [ "Function", "Poller", "Description"]},
